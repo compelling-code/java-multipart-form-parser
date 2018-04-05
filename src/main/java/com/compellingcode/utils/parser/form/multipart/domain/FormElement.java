@@ -1,20 +1,22 @@
 package com.compellingcode.utils.parser.form.multipart.domain;
 
+import com.compellingcode.utils.parser.form.multipart.file.FileContainer;
+
 public class FormElement {
 	
 	private boolean isFile;
 	private String name;
 	private String fileName;
-	private String tempFile;
 	private String mimeType;
 	private String value;
+	private FileContainer file;
 	
-	public FormElement(String name, String fileName, String tempFile, String mimeType) {
+	public FormElement(String name, String fileName, String mimeType, FileContainer file) {
 		isFile = true;
 		this.name = name;
 		this.fileName = fileName;
-		this.tempFile = tempFile;
 		this.mimeType = mimeType;
+		this.file = file;
 	}
 	
 	public FormElement(String name, String value) {
@@ -47,14 +49,6 @@ public class FormElement {
 		this.fileName = fileName;
 	}
 
-	public String getTempFile() {
-		return tempFile;
-	}
-
-	public void setTempFile(String tempFile) {
-		this.tempFile = tempFile;
-	}
-
 	public String getMimeType() {
 		return mimeType;
 	}
@@ -69,6 +63,14 @@ public class FormElement {
 
 	public void setValue(String value) {
 		this.value = value;
+	}
+
+	public FileContainer getFile() {
+		return file;
+	}
+
+	public void setFile(FileContainer file) {
+		this.file = file;
 	}
 
 }

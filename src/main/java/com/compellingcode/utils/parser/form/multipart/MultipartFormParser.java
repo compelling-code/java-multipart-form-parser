@@ -3,8 +3,6 @@ package com.compellingcode.utils.parser.form.multipart;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -17,22 +15,39 @@ import java.util.Set;
 
 import com.compellingcode.utils.parser.form.multipart.domain.FormElement;
 import com.compellingcode.utils.parser.form.multipart.exception.InvalidMultipartDataException;
+import com.compellingcode.utils.parser.form.multipart.exception.UnknownFileContainerTypeException;
+import com.compellingcode.utils.parser.form.multipart.file.FileContainer;
+import com.compellingcode.utils.parser.form.multipart.file.FileContainerFactory;
+import com.compellingcode.utils.parser.form.multipart.file.FileContainerType;
 
 public class MultipartFormParser {
 	private byte[] boundary;
 	
-	private static final String tempPrefix = "MFP-";
-	private static final String tempSuffix = ".tmp";
 	private static final byte[] twoNewLines = "\r\n\r\n".getBytes();
 	private static final byte[] newline = "\r\n".getBytes();
 	private static final byte[] eos = "--".getBytes();
 	
+	private FileContainerFactory fileFactory;
+	private FileContainerType fileType = FileContainerType.TEMPFILE;
+	
+	public MultipartFormParser(byte[] boundary) {
+		this.boundary = boundary;
+		fileFactory = new FileContainerFactory();
+	}
+	
 	public MultipartFormParser(byte[] boundary, String tempDir) {
 		this.boundary = boundary;
+		fileFactory = new FileContainerFactory(tempDir);
+	}
+	
+	public MultipartFormParser(String boundary) {
+		this.boundary = boundary.getBytes();
+		fileFactory = new FileContainerFactory();
 	}
 	
 	public MultipartFormParser(String boundary, String tempDir) {
 		this.boundary = boundary.getBytes();
+		fileFactory = new FileContainerFactory(tempDir);
 	}
 	
 	public Set<FormElement> parse(InputStream inputStream) throws InvalidMultipartDataException {
@@ -47,8 +62,8 @@ public class MultipartFormParser {
 				FormElement element;
 				
 				if(headers.containsKey("content-type")) {
-					String tempName = writeFile(pis);
-					element = new FormElement(headers.get("name"), headers.get("filename"), tempName, headers.get("content-type"));
+					FileContainer fc = writeFile(pis);
+					element = new FormElement(headers.get("name"), headers.get("filename"), headers.get("content-type"), fc);
 				} else {
 					String value = getValue(pis);
 					element = new FormElement(headers.get("name"), value);
@@ -145,16 +160,22 @@ public class MultipartFormParser {
 		return new String(data, "UTF-8");
 	}
 	
-	private String writeFile(PushbackInputStream pis) throws IOException, InvalidMultipartDataException {
-		File tempFile = File.createTempFile(tempPrefix, tempSuffix);
-		String tempName = tempFile.getAbsolutePath();
+	private FileContainer writeFile(PushbackInputStream pis) throws IOException, InvalidMultipartDataException, UnknownFileContainerTypeException {
+		FileContainer fc = fileFactory.getFileContainer(fileType);
 		
-		BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(tempFile), 64 * 1024);
+		BufferedOutputStream bos = new BufferedOutputStream(fc.openOutputStream(), 64 * 1024);
 		readBlock(pis, bos, boundary);
-		bos.flush();
-		bos.close();
+		fc.closeOutputStream();
 		
-		return tempName;
+		return fc;
+	}
+
+	public FileContainerType getFileType() {
+		return fileType;
+	}
+
+	public void setFileType(FileContainerType fileType) {
+		this.fileType = fileType;
 	}
 
 }
