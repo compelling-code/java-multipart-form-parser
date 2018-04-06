@@ -7,11 +7,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PushbackInputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import com.compellingcode.utils.parser.form.multipart.domain.FormElement;
 import com.compellingcode.utils.parser.form.multipart.exception.InvalidMultipartDataException;
@@ -22,6 +22,7 @@ import com.compellingcode.utils.parser.form.multipart.file.FileContainerType;
 
 public class MultipartFormParser {
 	private byte[] boundary;
+	private byte[] newlineBoundary;
 	
 	private static final byte[] twoNewLines = "\r\n\r\n".getBytes();
 	private static final byte[] newline = "\r\n".getBytes();
@@ -32,30 +33,46 @@ public class MultipartFormParser {
 	
 	public MultipartFormParser(byte[] boundary) {
 		this.boundary = boundary;
+		this.newlineBoundary = getNewlineBoundary(boundary);
 		fileFactory = new FileContainerFactory();
 	}
 	
 	public MultipartFormParser(byte[] boundary, String tempDir) {
 		this.boundary = boundary;
+		this.newlineBoundary = getNewlineBoundary(boundary);
 		fileFactory = new FileContainerFactory(tempDir);
 	}
 	
 	public MultipartFormParser(String boundary) {
 		this.boundary = boundary.getBytes();
+		this.newlineBoundary = getNewlineBoundary(this.boundary);
 		fileFactory = new FileContainerFactory();
 	}
 	
 	public MultipartFormParser(String boundary, String tempDir) {
 		this.boundary = boundary.getBytes();
+		this.newlineBoundary = getNewlineBoundary(this.boundary);
 		fileFactory = new FileContainerFactory(tempDir);
 	}
 	
-	public Set<FormElement> parse(InputStream inputStream) throws InvalidMultipartDataException {
+	private byte[] getNewlineBoundary(byte[] boundary) {
+		byte[] newlineBoundary = new byte[boundary.length + 2];
+		newlineBoundary[0] = '\r';
+		newlineBoundary[1] = '\n';
+		
+		for(int n = 0; n < boundary.length; n++) {
+			newlineBoundary[n + 2] = boundary[n];
+		}
+		
+		return newlineBoundary;
+	}
+	
+	public List<FormElement> parse(InputStream inputStream) throws InvalidMultipartDataException {
 		PushbackInputStream pis = new PushbackInputStream(new BufferedInputStream(inputStream, 16 * 1024), 1024);
-		Set<FormElement> elements = new HashSet<FormElement>();
+		List<FormElement> elements = new ArrayList<FormElement>();
 		
 		try {
-			readBlock(pis, new NullOutputStream(), boundary);
+			readBlock(pis, new NullOutputStream(),new byte[][] {boundary}, new byte[0]);
 			
 			while(!isEnd(pis)) {
 				Map<String, String> headers = getHeaders(pis);
@@ -91,31 +108,46 @@ public class MultipartFormParser {
 		return false;
 	}
 	
-	private void readBlock(PushbackInputStream pis, OutputStream os, byte[] delimiter) throws IOException, InvalidMultipartDataException {
+	private void readBlock(PushbackInputStream pis, OutputStream os, byte[][] delimiters, byte[] dontEat) throws IOException, InvalidMultipartDataException {
 		while(true) {
 			int i = pis.read();
 			if(i == -1)
 				throw new InvalidMultipartDataException("Unexpected end of stream");
 			
 			byte b = (byte)i;
-			if(b == delimiter[0]) {
-				byte[] lookahead = new byte[delimiter.length];
+			
+			if(dontEat.length > 0 && b == dontEat[0]) {
+				byte[] lookahead = new byte[dontEat.length];
 				lookahead[0] = b;
-				int count = pis.read(lookahead, 1, delimiter.length - 1);
-				if(Arrays.equals(lookahead, delimiter)) {
-					break;
+				int count = pis.read(lookahead, 1, dontEat.length - 1);
+				if(Arrays.equals(lookahead,  dontEat)) {
+					pis.unread(lookahead);
+					return;
 				} else {
 					pis.unread(lookahead, 1, count);
 				}
-				
-				os.write(b);
 			}
+			
+			for(int n = 0; n < delimiters.length; n++) {
+				byte[] delimiter = delimiters[n];
+				if(b == delimiter[0]) {
+					byte[] lookahead = new byte[delimiter.length];
+					lookahead[0] = b;
+					int count = pis.read(lookahead, 1, delimiter.length - 1);
+					if(Arrays.equals(lookahead, delimiter)) {
+						return;
+					} else {
+						pis.unread(lookahead, 1, count);
+					}
+				}
+			}
+			os.write(b);
 		}
 	}
 	
 	private Map<String, String> getHeaders(PushbackInputStream pis) throws IOException, InvalidMultipartDataException {
 		ByteArrayOutputStream baos = new ByteArrayOutputStream(64 * 1024);
-		readBlock(pis, baos, twoNewLines);
+		readBlock(pis, baos, new byte[][] {twoNewLines}, boundary);
 		
 		byte[] data = baos.toByteArray();
 		baos.close();
@@ -137,6 +169,11 @@ public class MultipartFormParser {
 				for(int i = 1; i < values.length; i++) {
 					String[] parts = values[i].trim().split("=", 2);
 					if(parts.length > 1) {
+						if(parts[1].length() > 1) {
+							if(parts[1].charAt(0) == '"' && parts[1].charAt(parts[1].length() - 1) == '"') {
+								parts[1] = parts[1].substring(1, parts[1].length() - 1);
+							}
+						}
 						headers.put(parts[0], parts[1]);
 					} else {
 						headers.put(parts[0], "");
@@ -152,7 +189,7 @@ public class MultipartFormParser {
 	
 	private String getValue(PushbackInputStream pis) throws InvalidMultipartDataException, IOException {
 		ByteArrayOutputStream baos = new ByteArrayOutputStream(64 * 1024);
-		readBlock(pis, baos, boundary);
+		readBlock(pis, baos, new byte[][] {newlineBoundary, boundary}, new byte[0]);
 		
 		byte[] data = baos.toByteArray();
 		baos.close();
@@ -163,8 +200,8 @@ public class MultipartFormParser {
 	private FileContainer writeFile(PushbackInputStream pis) throws IOException, InvalidMultipartDataException, UnknownFileContainerTypeException {
 		FileContainer fc = fileFactory.getFileContainer(fileType);
 		
-		BufferedOutputStream bos = new BufferedOutputStream(fc.openOutputStream(), 64 * 1024);
-		readBlock(pis, bos, boundary);
+		OutputStream os = fc.openOutputStream();
+		readBlock(pis, os, new byte[][] {newlineBoundary, boundary}, new byte[0]);
 		fc.closeOutputStream();
 		
 		return fc;

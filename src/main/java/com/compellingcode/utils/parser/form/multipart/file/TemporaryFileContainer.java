@@ -26,7 +26,7 @@ public class TemporaryFileContainer implements FileContainer {
 
 	public OutputStream openOutputStream() throws FileNotFoundException {
 		outputStream = new BufferedOutputStream(new FileOutputStream(tempFile), 64 * 1024);
-		return outputStream;
+		return new BufferedOutputStream(outputStream, 64 * 1024);
 	}
 
 	public void closeOutputStream() throws IOException {
