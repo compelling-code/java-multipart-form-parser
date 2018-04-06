@@ -1,7 +1,9 @@
 package com.compellingcode.utils.parser.form.multipart;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 
 import org.junit.Test;
@@ -19,7 +21,7 @@ public class MultipartFormParserTest extends TestCase {
 		if(is == null)
 			throw new Exception("file not found");
 		
-		MultipartFormParser parser = new MultipartFormParser("-----------------------------9051914041544843365972754266");
+		MultipartFormParser parser = new MultipartFormParser("---------------------------9051914041544843365972754266");
 		parser.setFileType(FileContainerType.MEMORY);
 		List<FormElement> elements = parser.parse(is);
 		
@@ -65,4 +67,23 @@ public class MultipartFormParserTest extends TestCase {
 		assertEquals(elements.get(3).getMimeType(), "text/plain");
 	}
 	
+	@Test
+	public void testBinaryData() throws Exception {
+		InputStream is = this.getClass().getResourceAsStream("/testdata4.txt");
+		if(is == null)
+			throw new Exception("file not found");
+		
+		MultipartFormParser parser = new MultipartFormParser("---------------------------17750146181990845729383351687");
+		parser.setFileType(FileContainerType.MEMORY);
+		List<FormElement> elements = parser.parse(is);
+		
+		is.close();
+		
+		assertTrue(elements.size() == 2);
+		
+		ByteArrayInputStream bais = (ByteArrayInputStream)elements.get(1).getFile().openInputStream();
+		byte[] data = new byte[10 * 1024 * 1024];
+		int count = bais.read(data);
+		System.out.println(new String(Base64.getEncoder().encode(Arrays.copyOfRange(data, 0, count))));
+	}
 }

@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import java.io.PushbackInputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,39 +33,40 @@ public class MultipartFormParser {
 	private FileContainerType fileType = FileContainerType.TEMPFILE;
 	
 	public MultipartFormParser(byte[] boundary) {
-		this.boundary = boundary;
-		this.newlineBoundary = getNewlineBoundary(boundary);
+		setBoundary(boundary);
 		fileFactory = new FileContainerFactory();
 	}
 	
 	public MultipartFormParser(byte[] boundary, String tempDir) {
-		this.boundary = boundary;
-		this.newlineBoundary = getNewlineBoundary(boundary);
+		setBoundary(boundary);
 		fileFactory = new FileContainerFactory(tempDir);
 	}
 	
 	public MultipartFormParser(String boundary) {
-		this.boundary = boundary.getBytes();
-		this.newlineBoundary = getNewlineBoundary(this.boundary);
+		setBoundary(boundary.getBytes());
 		fileFactory = new FileContainerFactory();
 	}
 	
 	public MultipartFormParser(String boundary, String tempDir) {
-		this.boundary = boundary.getBytes();
-		this.newlineBoundary = getNewlineBoundary(this.boundary);
+		setBoundary(boundary.getBytes());
 		fileFactory = new FileContainerFactory(tempDir);
 	}
 	
-	private byte[] getNewlineBoundary(byte[] boundary) {
-		byte[] newlineBoundary = new byte[boundary.length + 2];
-		newlineBoundary[0] = '\r';
-		newlineBoundary[1] = '\n';
+	private void setBoundary(byte[] boundary) {
+		this.boundary = new byte[boundary.length + 2];
+		this.boundary[0] = '-';
+		this.boundary[1] = '-';
+		
+		this.newlineBoundary = new byte[boundary.length + 4];
+		this.newlineBoundary[0] = '\r';
+		this.newlineBoundary[1] = '\n';
+		this.newlineBoundary[2] = '-';
+		this.newlineBoundary[3] = '-';
 		
 		for(int n = 0; n < boundary.length; n++) {
-			newlineBoundary[n + 2] = boundary[n];
+			this.boundary[n + 2] = boundary[n];
+			this.newlineBoundary[n + 4] = boundary[n];
 		}
-		
-		return newlineBoundary;
 	}
 	
 	public List<FormElement> parse(InputStream inputStream) throws InvalidMultipartDataException {
@@ -109,6 +111,8 @@ public class MultipartFormParser {
 	}
 	
 	private void readBlock(PushbackInputStream pis, OutputStream os, byte[][] delimiters, byte[] dontEat) throws IOException, InvalidMultipartDataException {
+		int byteCount = 0;
+		
 		while(true) {
 			int i = pis.read();
 			if(i == -1)
@@ -142,6 +146,7 @@ public class MultipartFormParser {
 				}
 			}
 			os.write(b);
+			byteCount++;
 		}
 	}
 	
