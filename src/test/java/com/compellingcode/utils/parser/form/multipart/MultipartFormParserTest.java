@@ -15,7 +15,7 @@ public class MultipartFormParserTest extends TestCase {
 	
 	@Test
 	public void testMultipartFormData() throws Exception {
-		InputStream is = this.getClass().getResourceAsStream("/com/compellingcode/utils/parser/form/multipart/testdata.txt");
+		InputStream is = this.getClass().getResourceAsStream("/testdata.txt");
 		if(is == null)
 			throw new Exception("file not found");
 		
